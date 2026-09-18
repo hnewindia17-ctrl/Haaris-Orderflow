@@ -36,6 +36,18 @@ export type FlowEvent = {
   detail: string;
 };
 
+export type SwingLiquidity = {
+  side: 'bid' | 'ask';
+  swingType: 'high' | 'low';
+  swingTime: number;
+  swingPrice: number;
+  zonePrice: number;
+  totalQty: number;
+  totalNotional: number;
+  levelCount: number;
+  distancePct: number;
+};
+
 function studyValue(candle: Candle, study: DivergenceKind) {
   return study === 'pressure'
     ? candle.delta
@@ -106,6 +118,57 @@ export function buildVolumeProfile(candles: Candle[], binCount = 14): VolumeProf
 
   const poc = Math.max(...nodes.map((node) => node.volume));
   return nodes.map((node) => ({ ...node, isPoc: node.volume === poc }));
+}
+
+export function buildSwingLiquidity(
+  candles: Candle[],
+  bids: { price: number; qty: number }[],
+  asks: { price: number; qty: number }[],
+): SwingLiquidity[] {
+  if (candles.length < 5 || (!bids.length && !asks.length)) return [];
+
+  const recent = candles.slice(-160);
+  const averageRange = recent.reduce((sum, candle) => sum + candle.high - candle.low, 0) / recent.length;
+  const averagePrice = recent.reduce((sum, candle) => sum + candle.close, 0) / recent.length;
+  const priceBand = Math.max(averageRange * 0.55, averagePrice * 0.0008);
+  const candidates: Array<{ candle: Candle; swingType: 'high' | 'low'; levels: { price: number; qty: number }[] }> = [];
+
+  for (let index = 2; index < recent.length - 2; index += 1) {
+    const candle = recent[index];
+    const neighborhood = recent.slice(index - 2, index + 3);
+    const isHigh = candle.high >= Math.max(...neighborhood.map((item) => item.high));
+    const isLow = candle.low <= Math.min(...neighborhood.map((item) => item.low));
+    if (isHigh) candidates.push({ candle, swingType: 'high', levels: asks });
+    if (isLow) candidates.push({ candle, swingType: 'low', levels: bids });
+  }
+
+  const zones = candidates.map(({ candle, swingType, levels }) => {
+    const matched = levels.filter((level) => Math.abs(level.price - (swingType === 'high' ? candle.high : candle.low)) <= priceBand);
+    if (!matched.length) return null;
+    const totalQty = matched.reduce((sum, level) => sum + level.qty, 0);
+    const totalNotional = matched.reduce((sum, level) => sum + level.price * level.qty, 0);
+    const zonePrice = totalQty ? totalNotional / totalQty : matched[0].price;
+    return {
+      side: swingType === 'high' ? 'ask' as const : 'bid' as const,
+      swingType,
+      swingTime: candle.time,
+      swingPrice: swingType === 'high' ? candle.high : candle.low,
+      zonePrice,
+      totalQty,
+      totalNotional,
+      levelCount: matched.length,
+      distancePct: Math.abs(zonePrice - (swingType === 'high' ? candle.high : candle.low)) / Math.max(candle.close, 1) * 100,
+    };
+  }).filter((zone): zone is SwingLiquidity => Boolean(zone))
+    .sort((a, b) => b.totalNotional - a.totalNotional);
+
+  const selected: SwingLiquidity[] = [];
+  for (const zone of zones) {
+    if (selected.some((item) => item.side === zone.side)) continue;
+    selected.push(zone);
+    if (selected.length === 2) break;
+  }
+  return selected.sort((a, b) => a.zonePrice - b.zonePrice);
 }
 
 export function buildVwapBands(candles: Candle[]): VwapPoint[] {

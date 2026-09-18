@@ -113,6 +113,19 @@ function ChartNavigation({ candles, visibleCount, onVisibleCount, windowEnd, onW
   return <div className="chart-navigation"><span><Crosshair size={12} /> SYNCED HISTORY <b>{Math.min(visibleCount, candles.length)} / {candles.length || '—'}</b></span><div><button disabled={!canBack} onClick={() => onWindowEnd(Math.max(visibleCount, windowEnd - visibleCount))}>← older</button><button onClick={() => onVisibleCount(Math.max(30, visibleCount - 20))}>−</button><button onClick={() => onVisibleCount(Math.min(1000, visibleCount + 20))}>+</button><button disabled={!canForward} onClick={() => onWindowEnd(Math.min(maxEnd, windowEnd + visibleCount))}>newer →</button><button onClick={() => onWindowEnd(maxEnd)}>LATEST</button></div></div>;
 }
 
+function SwingLiquidityOverlay({ zones, min, max, pad, height, width, y }: { zones: SwingLiquidity[]; min: number; max: number; pad: { l: number; r: number; t: number; b: number }; height: number; width: number; y: (value: number) => number }) {
+  const span = max - min || 1;
+  return <>{zones.map((zone) => {
+    if (zone.zonePrice < min || zone.zonePrice > max) return null;
+    const band = Math.max(span * 0.006, zone.zonePrice * 0.00018);
+    const top = y(zone.zonePrice + band);
+    const bottom = y(zone.zonePrice - band);
+    const tone = zone.side === 'bid' ? 'bid' : 'ask';
+    const title = `${zone.swingType === 'high' ? 'Swing high' : 'Swing low'} · ${zone.side === 'bid' ? 'bid' : 'ask'} liquidity ${compact(zone.totalNotional)} USDT · ${zone.levelCount} levels · ${zone.distancePct.toFixed(2)}% from swing`;
+    return <g key={`swing-liquidity-${zone.side}-${zone.swingTime}`} className={`swing-liquidity ${tone}`}><title>{title}</title><rect x={pad.l} y={Math.min(top, bottom)} width={width - pad.l - pad.r} height={Math.max(3, Math.abs(bottom - top))} className="swing-liquidity-zone" /><line x1={pad.l} x2={width - pad.r} y1={y(zone.zonePrice)} y2={y(zone.zonePrice)} className="swing-liquidity-line" /><text x={pad.l + 7} y={y(zone.zonePrice) + (zone.swingType === 'high' ? -7 : 13)} className="swing-liquidity-label">{zone.swingType === 'high' ? 'HIGH' : 'LOW'} {zone.side === 'bid' ? 'BID' : 'ASK'} · {compact(zone.totalNotional)} USDT</text></g>;
+  })}</>;
+}
+
 function CandleChart({ candles, compactMode, bids, asks, divergences, events, hoveredTime, onHover, riskLevels, onRiskChange, visibleStart, visibleEnd }: { candles: Candle[]; compactMode: boolean; bids: DepthLevel[]; asks: DepthLevel[]; divergences: Divergence[]; events: FlowEvent[]; hoveredTime: number | null; onHover: (time: number | null) => void; riskLevels: RiskLevels; onRiskChange: (levels: RiskLevels) => void; visibleStart: number; visibleEnd: number }) {
   const width = 900; const height = compactMode ? 300 : 385; const pad = { l: 8, r: 52, t: 18, b: 36 };
   const visible = candles.slice(visibleStart, visibleEnd);
