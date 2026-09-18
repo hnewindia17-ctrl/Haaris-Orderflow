@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Binance Orderflow Terminal"
+description = "A live Binance USDT-M Futures order-flow terminal with market selection, cumulative delta and pressure analytics, direction balance bars, multi-timeframe context, and a liquidity heatmap powered by public market data streams."
+version = "1.0.0"
+id = "artifacts/binance-orderflow"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19259
+
+[services.development]
+run = "pnpm --filter @workspace/binance-orderflow run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/binance-orderflow", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/binance-orderflow/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19259"
+BASE_PATH = "/"

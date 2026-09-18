@@ -1,0 +1,1 @@
+- [Artifact preview routing](artifact-preview-routing.md) — web artifacts must use unique preview paths; duplicate root paths can make the proxied preview fail.
